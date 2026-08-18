@@ -39,6 +39,23 @@ Local on phone (Termux/Ubuntu proot, ~/quietstorm-vpn/):
 - Build: go build ./... passes with Go 1.26.1
 
 ### Android Client (PattNG fork — QuietStormNG)
+- DONE: SenPaiScannerBridge.kt added — wraps Mobile.startScan/stopScan/isRunning
+  from the .aar via com.matinsenpai.senpaiscanner package
+- DONE: ProfileReplacement.kt added — handles selecting the right profile after
+  IP replacement, with fuzzy matching on remarks/server/port/password
+- DONE: OrphanProfileCleaner.kt added — removes stale profiles after replacement
+- DONE: senpaiscanner.aar added to V2rayNG/app/libs/ (from SenPaiScanner
+  build-android.yml GitHub Actions artifact)
+- DONE: SenPaiScanner-1.0.0-mobile.aar also added (second copy, may be duplicate
+  — verify and remove one after build confirms which is correct)
+- DONE: MmkvManager.kt extended — new keys/prefs added
+- DONE: AngConfigManager.kt refactored — subscription handling changes
+- DONE: build.gradle.kts updated — dependency change
+- IN PROGRESS: Build APK #10 running — testing if .aar integrates correctly
+- OPEN: UI button "Smart Connect" / "Optimize for Cloudflare" — not yet added
+- OPEN: Wiring SenPaiScannerBridge into actual scan flow (startScan called
+  from somewhere in UI/ViewModel — not yet confirmed)
+- OPEN: Result of scan → IP replacement → VPN connect flow — not yet wired end to end
 - App name: QuietStormNG
 - Package name: com.quietstorm.ng (no conflict with v2rayNG)
 - GitHub Actions CI: working, builds 4 APK variants (arm64, armeabi, x86,
@@ -92,6 +109,13 @@ finalMask default (TCP fragment):
 ---
 
 ## IMPORTANT NOTES
+
+- Two .aar files now exist in libs/: senpaiscanner.aar and
+  SenPaiScanner-1.0.0-mobile.aar — these are likely duplicates from two
+  separate build runs. After build confirms which works, remove the other.
+- SenPaiScannerBridge imports com.matinsenpai.senpaiscanner — verify this
+  matches the actual Java package name inside the .aar before assuming
+  the build will succeed.
 
 - E2E validation MUST run on actual Iranian ISP (Termux on phone, no VPN),
   NOT from the Dutch server (NDL) — server has open internet, results are
