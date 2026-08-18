@@ -319,3 +319,160 @@ The active blocker is now specifically Android Gradle Plugin resolution for:
 The exact root cause remains unconfirmed and requires correct repository/artifact metadata inspection before any version change.
 
 ---
+---
+
+## 15) V2rayNG / PattNG Android Build Investigation — Latest Update
+
+### SenPaiScanner AAR Status
+
+The SenPaiScanner AAR is CONFIRMED present locally in the PattNG Android project.
+
+Path:
+
+`~/quietstorm-vpn/pattng/V2rayNG/app/libs/senpaiscanner.aar`
+
+Current file size:
+
+`45M`
+`46,939,912 bytes`
+
+The previous attempt to copy the AAR from:
+
+`/storage/emulated/0/Download/SenPaiScanner-1.0.0-mobile.aar`
+
+returned:
+
+`cp: cannot stat ... No such file or directory`
+
+However, this did NOT indicate that the AAR was missing from PattNG. The destination file already existed and was verified successfully.
+
+### PattNG AAR Gradle Integration
+
+The current `app/build.gradle.kts` already includes:
+
+`implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar", "*.jar"))))`
+
+Therefore `app/libs/senpaiscanner.aar` is already included by the Android dependency configuration.
+
+The current `sourceSets` also contains:
+
+`jniLibs.srcDirs("libs")`
+
+No additional AAR wiring change has been made during this investigation.
+
+The AAR integration itself is therefore NOT currently the build blocker.
+
+### Current PattNG Build Configuration
+
+Current Android project:
+
+`~/quietstorm-vpn/pattng/V2rayNG`
+
+Current branch:
+
+`master`
+
+Current HEAD:
+
+`11155455`
+
+Recent commits:
+
+`11155455 fix: use generated SenPaiScanner mobile package`
+`ad69002c feat: add SenPaiScanner Kotlin bridge`
+`3a2ffe6e feat: add SenPaiScanner mobile AAR`
+
+The current working tree contains one unrelated untracked file:
+
+`../keystore_base64.txt`
+
+No PattNG source/build configuration change has been made during this AGP investigation.
+
+### AGP Cache Status
+
+A local Gradle cache search for Android Gradle Plugin artifacts returned no matching cached AGP POM/JAR files.
+
+Therefore there is currently no locally cached AGP artifact available that can bypass the plugin-resolution failure.
+
+### Current AGP Configuration
+
+`gradle/libs.versions.toml`:
+
+`agp = "9.3.1"`
+
+Plugin aliases:
+
+`android-application = { id = "com.android.application", version.ref = "agp" }`
+`android-library = { id = "com.android.library", version.ref = "agp" }`
+
+Gradle wrapper:
+
+`9.5.1`
+
+Java:
+
+`21.0.11`
+
+Architecture:
+
+`aarch64`
+
+### Latest Confirmed Build Failure
+
+The full build command:
+
+`./gradlew --no-daemon --stacktrace --info assembleRelease`
+
+still fails during Gradle configuration before Android compilation.
+
+The blocking error remains:
+
+`Plugin [id: 'com.android.application', version: '9.3.1'] was not found`
+
+The failure occurs while evaluating the root `build.gradle.kts`.
+
+### Important Diagnostic Conclusion
+
+The previous direct HTTP tests against:
+
+`https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle/<version>/gradle-<version>.pom`
+
+returned HTTP `404`.
+
+These tests are NOT considered authoritative evidence that the AGP versions are unavailable, because they tested an artifact path that does not correctly model Gradle plugin-marker resolution.
+
+The latest investigation additionally confirms that no usable AGP artifact is currently present in the local Gradle cache.
+
+The exact cause of the AGP resolution failure remains UNCONFIRMED.
+
+### Current Root Cause Boundary
+
+Confirmed:
+
+- SenPaiScanner AAR exists locally.
+- AAR size is approximately 45 MB.
+- PattNG `app/build.gradle.kts` already includes local `.aar` files through `fileTree`.
+- Gradle reaches root project configuration successfully.
+- Java 21 is detected correctly.
+- Gradle 9.5.1 starts successfully with `-Xmx4096m`.
+- No cached AGP artifact was found.
+- Build stops before Android source compilation.
+- AGP `9.3.1` plugin resolution is the active blocker.
+
+Not confirmed:
+
+- Whether AGP `9.3.1` actually exists/should be used.
+- Whether the configured Gradle version is compatible with the intended AGP version.
+- Whether repository metadata/network resolution is behaving correctly.
+- Whether the current version catalog was copied from a newer upstream state that is not resolvable in this environment.
+
+### Operational Rule
+
+Do NOT blindly downgrade AGP.
+
+Do NOT change Kotlin, Gradle wrapper, repositories, or Android source code until the exact AGP resolution problem is identified.
+
+The next diagnostic must use correct Google Maven metadata and/or Gradle's actual plugin-resolution mechanism to determine which AGP versions are available and compatible.
+
+---
+```0
