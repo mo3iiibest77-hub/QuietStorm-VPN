@@ -101,3 +101,64 @@ finalMask default (TCP fragment):
 - Scanner server-side role: build artifacts only. All validation runs
   client-side on phone.
 - Go 1.26.1 installed manually at /usr/local/go (apt version 1.18 too old)
+----:
+
+Scanner (Go — SenPaiScanner fork)
+
+gomobile Go 1.26 compatibility fix applied in android/build_go_mobile.sh: GOFLAGS="${GOFLAGS:-} -ldflags=-checklinkname=0"
+
+Commit: 9a628ce
+
+Android Scanner build succeeded and the APK was installed/tested on the phone.
+
+E2E Android test confirmed: scanner runs successfully, performs the scan, and discovers Cloudflare IPs.
+
+Previous Android release artifact contained only the 3 APK variants; the generated senpaiscanner.aar was not published separately.
+
+
+Android Client (PattNG fork — QuietStormNG)
+
+CoreOutboundBuilder.kt fingerprint fix committed as 19a7262e: fingerprint = "unsafe" is now hardcoded and overrides config/UI values such as "chrome".
+
+TESTED: the UI may still display Chrome, but runtime uses unsafe.
+
+TESTED: Cloudflare config connects successfully with production fingerprint, cipherSuites, and finalMask values; upload and download work correctly.
+
+
+Build / Artifact Pipeline
+
+SenPaiScanner Android workflow updated in commit 87c2076.
+
+Workflow now verifies android/app/libs/senpaiscanner.aar.
+
+AAR is copied into the release artifact as: SenPaiScanner-${VERSION}-mobile.aar
+
+Next build must confirm that the AAR is actually present in the downloaded android-release artifact.
+
+
+OPEN — NEXT STEPS (in order)
+
+1. NEXT: Run a new SenPaiScanner Android build from commit 87c2076
+
+Confirm senpaiscanner.aar is included in the android-release artifact
+
+Transfer the AAR into PattNG/V2rayNG/app/libs/
+
+Wire the Kotlin bridge to the AAR
+
+Do NOT start the new UI or scoring yet
+
+
+
+2. Add "Optimize for Cloudflare" button to UI
+
+
+3. Scoring/ranking in scanner
+
+
+4. UI theme: black/gold (brand assets exist, see project owner)
+
+
+5. Post-MVP: scoring persistence, multi-ISP testing
+
+
