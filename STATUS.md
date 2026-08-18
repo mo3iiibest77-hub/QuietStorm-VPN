@@ -211,7 +211,7 @@ After the dependency update, the original production fragment values were restor
 
 The scanner uses the actual production fragment configuration:
 
-```json
+json
 {
   "tcp": [
     {
