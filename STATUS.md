@@ -162,3 +162,160 @@ Do NOT start the new UI or scoring yet
 5. Post-MVP: scoring persistence, multi-ISP testing
 
 
+---
+
+## 14) V2rayNG / PattNG Android Build Investigation — Latest Findings
+
+### Current Build Environment
+
+The Android project is located at:
+
+`~/quietstorm-vpn/pattng/V2rayNG`
+
+The project uses:
+
+- Gradle `9.5.1`
+- Java `21.0.11`
+- OpenJDK `21` on `aarch64`
+- Gradle daemon JVM argument: `-Xmx4096m`
+- Gradle uses `6` worker leases during the observed build
+- Android Gradle Plugin is configured through `gradle/libs.versions.toml`
+
+### Important Build Failure History
+
+The first observed failures appeared during Gradle configuration and initially included:
+
+`The current JVM process isn't compatible with build requirement. The maximum heap size is insufficient.`
+
+Gradle then successfully started a single-use daemon with:
+
+`-Xmx4096m`
+
+Therefore, the currently observed blocking failure is NOT simply an insufficient Gradle heap setting.
+
+The build subsequently progressed through project loading and reached root project configuration.
+
+The current reproducible failure is:
+
+`Plugin [id: 'com.android.application', version: '9.3.1'] was not found`
+
+Gradle searched:
+
+- Google
+- Maven Central
+- Gradle Plugin Portal
+
+and attempted to resolve:
+
+`com.android.application:com.android.application.gradle.plugin:9.3.1`
+
+The relevant project configuration is:
+
+`build.gradle.kts`:
+`plugins { alias(libs.plugins.android.application) apply false ... }`
+
+`gradle/libs.versions.toml`:
+`agp = "9.3.1"`
+
+and:
+
+`android-application = { id = "com.android.application", version.ref = "agp" }`
+
+The `settings.gradle.kts` plugin repositories are already configured with:
+
+`google()`
+`mavenCentral()`
+`gradlePluginPortal()`
+
+The Google repository also has Android/Google/AndroidX content filters.
+
+### Important Diagnostic Correction
+
+A direct HTTP test was initially performed against:
+
+`https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle/<version>/gradle-<version>.pom`
+
+for several AGP versions.
+
+Those tests returned HTTP `404`.
+
+This test was later identified as an invalid/inconclusive diagnostic because the requested artifact path/name does not correctly represent the plugin marker resolution used by Gradle.
+
+Therefore:
+
+**Do NOT record the HTTP 404 results as proof that AGP versions are unavailable from Google Maven.**
+
+The correct next diagnostic must inspect Google Maven metadata and/or the actual Gradle-resolved artifact coordinates.
+
+### Current Known Project Configuration
+
+`gradle/libs.versions.toml` currently contains:
+
+`agp = "9.3.1"`
+`kotlin = "2.4.10"`
+
+and the Android application/library plugins both reference the same `agp` version.
+
+`gradle.properties` currently contains:
+
+`org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8`
+
+No project file has yet been changed as part of this build investigation.
+
+### Current Root Cause Status
+
+The build is currently blocked during Gradle plugin resolution, before Android compilation begins.
+
+The confirmed failure is:
+
+`com.android.application` version `9.3.1` cannot currently be resolved by the Gradle build from the configured plugin repositories.
+
+The exact reason is NOT yet confirmed.
+
+Possible causes that must be distinguished before changing versions include:
+
+- incorrect/nonexistent AGP version in the Version Catalog;
+- repository metadata/version availability issue;
+- network/proxy/mirror behaviour;
+- Gradle plugin marker resolution problem;
+- compatibility between the selected Gradle version and the selected AGP version;
+- a project configuration/version combination that was copied from a newer upstream state but is not currently resolvable in this environment.
+
+No AGP downgrade should be performed blindly.
+
+### Build Investigation Commands Already Executed
+
+The following build command was executed:
+
+`./gradlew --no-daemon --stacktrace --info assembleRelease 2>&1 | tee /tmp/pattng-build.log`
+
+It successfully reached:
+
+`Settings evaluated`
+`Projects loaded`
+`Root project 'v2rayNG'`
+`Included projects: [root project 'v2rayNG', project ':app']`
+
+and then failed while evaluating the root build script because the Android application plugin could not be resolved.
+
+### Operational Rule for Future Investigation
+
+Before changing AGP, Kotlin, Gradle wrapper, repositories, or project source files:
+
+1. Confirm the exact artifact/version availability using the correct Google Maven metadata or Gradle resolution mechanism.
+2. Confirm the compatibility relationship between Gradle `9.5.1`, AGP, and Kotlin.
+3. Preserve the current working tree and avoid unrelated Android source changes.
+4. Re-run the smallest diagnostic command necessary before attempting another full `assembleRelease`.
+5. Do not treat the earlier HTTP `404` artifact-path test as authoritative evidence.
+
+### Latest State
+
+The project has progressed past the earlier generic daemon/heap failure.
+
+The active blocker is now specifically Android Gradle Plugin resolution for:
+
+`com.android.application:9.3.1`
+
+The exact root cause remains unconfirmed and requires correct repository/artifact metadata inspection before any version change.
+
+---
