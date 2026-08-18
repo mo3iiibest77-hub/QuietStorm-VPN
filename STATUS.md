@@ -71,7 +71,48 @@ Local on phone (Termux/Ubuntu proot, ~/quietstorm-vpn/):
 - TESTED: config imported → VPN connected → upload+download working on
   Iranian ISP through Cloudflare CDN. Confirmed that fingerprint must be
   "unsafe" (not "chrome") for connection to succeed.
+## Scanner Integration — attempts and current decision (2026-08-19)
 
+### What was tried and why it failed
+
+Attempt 1: Add senpaiscanner.aar (from SenPaiScanner build-android workflow)
+  to PattNG/V2rayNG/app/libs/
+  Result: FAILED — conflict on libgojni.so and duplicate Go runtime classes
+  between senpaiscanner.aar and libv2ray.aar (both contain xray-core Go runtime)
+
+Attempt 2: Add SenPaiScanner-1.0.0-mobile.aar (second copy, different build)
+  Result: FAILED — same conflict, both .aar files contain identical Go native
+  libraries that conflict with libv2ray which PattNG already uses
+
+Root cause: senpaiscanner.aar bundles its own full xray-core + Go runtime
+  (libgojni.so). PattNG already has libv2ray.aar which also contains the Go
+  runtime. Two Go runtimes cannot coexist in one Android APK.
+
+### SenPaiScannerBridge.kt — current state
+  ChatGPT wrote SenPaiScannerBridge.kt importing com.matinsenpai.senpaiscanner.
+  After removing the .aar, this file now causes build failure
+  (Unresolved reference 'Mobile', 'Callback', 'matinsenpai').
+  Must be removed or rewritten before build can succeed.
+
+### Decision: abandon .aar approach, use PattNG's own xray-core directly
+
+Since PattNG already has a full xray-core (via libv2ray.aar + CoreService),
+the scanner functionality must be implemented IN KOTLIN using the same
+xray-core that PattNG already uses — not by importing a separate Go library.
+
+Plan:
+- Remove SenPaiScannerBridge.kt (it references the removed .aar)
+- Write CloudflareScanner.kt that:
+  * Takes a list of Cloudflare candidate IPs
+  * For each IP: builds a config (with fingerprint=unsafe + cipherSuites +
+    finalMask already applied by CoreOutboundBuilder), starts xray temporarily,
+    tests connectivity (real handshake), measures latency
+  * Returns the best IP
+  * Updates the active config with the best IP
+  * Connects VPN
+
+### NEXT IMMEDIATE ACTION
+Remove SenPaiScannerBridge.kt to fix the build, then write CloudflareScanner.kt
 ---
 
 ## PRODUCTION CONFIG DEFAULTS (do not change without testing)
