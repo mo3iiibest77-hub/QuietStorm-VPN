@@ -162,3 +162,134 @@ Go 1.26.1 was installed manually under `/usr/local/go` on the build server
 via the official tarball, with `PATH` updated in `~/.bashrc`. The distro's
 `apt` Go package (1.18) is too old for this project (go.mod requires
 `go 1.26.1`).
+
+
+---
+
+## E2E VALIDATION RESULT — 2026-08-18
+
+The previously open end-to-end validation step was completed successfully.
+
+### Test target
+
+A real production VLESS configuration was used:
+
+- Protocol: VLESS
+- Transport: WebSocket
+- Security: TLS
+- Candidate endpoint: `104.18.152.44:2096`
+- SNI: `dnflear.dontbedumb.ir`
+- WebSocket Host: `cdnflear.dontbedumb.ir`
+- WebSocket Path: `/`
+- ALPN: `http/1.1`
+- TLS fingerprint: `unsafe`
+- Production `finalmask` / fragment layer: enabled
+- Production custom cipher suite list: enabled
+- Upload test: disabled for this validation
+
+The candidate IP was swapped into the parsed production profile using `WithEndpoint()`. The test therefore exercised the real Xray validation path rather than a generic TCP/TLS probe.
+
+### Important Xray-core compatibility finding
+
+The first E2E attempt failed before any network connection because the installed Xray-core version rejected the production fragment configuration:
+
+`failed to build mask with type fragment > LengthMin can't be 0`
+
+A temporary conversion of the production fragment lengths was tested and rejected as unsuitable. The production fragment values themselves were not changed.
+
+The correct fix was to update the Xray-core dependency from:
+
+`github.com/xtls/xray-core v1.260327.0`
+
+to:
+
+`github.com/xtls/xray-core v1.260327.1-0.20260728075948-5ca6f4b7d4dc`
+
+After the dependency update, the original production fragment values were restored unchanged.
+
+### Production fragment values preserved
+
+The scanner uses the actual production fragment configuration:
+
+```json
+{
+  "tcp": [
+    {
+      "type": "fragment",
+      "settings": {
+        "packets": "tlshello",
+        "lengths": ["5", "94", "1"],
+        "delays": ["0"],
+        "maxSplit": "0"
+      }
+    },
+    {
+      "type": "fragment",
+      "settings": {
+        "packets": "1-1",
+        "lengths": ["109", "1"],
+        "delays": ["1"],
+        "maxSplit": "355"
+      }
+    }
+  ]
+}
+
+The production custom cipher suite list and fingerprint: "unsafe" are also applied by internal/xraytest/builder.go.
+
+E2E result
+
+The exact same production configuration and candidate IP were tested five consecutive times.
+
+All five tests succeeded.
+
+Observed throughput:
+
+Test 1: approximately 328 KB/s
+
+Test 2: approximately 276 KB/s
+
+Test 3: approximately 297 KB/s
+
+Test 4: approximately 55 KB/s
+
+Test 5: approximately 252 KB/s
+
+
+Every successful test received 524288 bytes. Upload testing was disabled. All five tests completed with Retries: 0.
+
+This establishes that the scanner's ValidateConfig() path can successfully start Xray-core and pass real traffic through the production VLESS + TLS + WS + fragment + cipher-suite + unsafe-fingerprint configuration.
+
+This is real end-to-end validation, not merely compilation or a TCP/TLS probe.
+
+It does NOT establish universal usability across all ISPs or networks. Client-network validation remains a separate concern and must be measured from the actual restricted user network when evaluating ISP-specific behavior.
+
+Full repository verification
+
+After the Xray-core update:
+
+go test -ldflags='-checklinkname=0' ./... -count=1
+
+completed successfully for the entire SenPaiScanner repository.
+
+All existing test packages passed, including internal/export, internal/ipsrc, internal/prober, internal/result, internal/ui, and internal/xraytest.
+
+The temporary .e2e-baseline test harness was removed after validation.
+
+Git state
+
+The successful Xray-core dependency update was committed and pushed to:
+
+github.com/mo3iiibest77-hub/SenPaiScanner
+
+The fork's main branch now contains the completed dependency update and associated go.sum changes.
+
+Current conclusion
+
+The previously identified xraytest production-configuration gap is now closed and the resulting validation path has been exercised successfully against a real production VLESS endpoint.
+
+The next engineering step remains scoring/ranking and result persistence, followed by eventual PattNG-side integration.
+
+Do not treat the current five successful runs as proof that every Cloudflare candidate or every ISP will work. The validation layer is now proven functional, while broader network/ISP coverage still requires representative client-side testing.
+
+
