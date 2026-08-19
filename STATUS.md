@@ -176,3 +176,126 @@ Planned:
 Do not skip step 2 before starting step 3.
 A passing compile does not mean the scanner works on a real device.
 ENDOFSTATUS
+# PROJECT STATUS — Read After PROJECT_FOUNDATION.md
+
+> Update this file at the end of any work session. Read PROJECT_FOUNDATION.md
+> first for unchanging rules; this file tells you what's confirmed, what's
+> missing, and what to do next.
+
+---
+
+## Last updated: 2026-08-19
+
+## Repo layout
+
+Docs repo: https://github.com/mo3iiibest77-hub/QuietStorm-VPN
+Scanner fork: https://github.com/mo3iiibest77-hub/SenPaiScanner
+Android client fork: https://github.com/mo3iiibest77-hub/PattNG
+
+Local on build server (/opt/quietstorm-vpn/):
+  senpai-scanner/  — Go scanner, main branch
+  pattng/          — Android client, master branch
+  docs/            — QuietStorm-VPN docs repo
+
+---
+
+## CONFIRMED DONE
+
+### Scanner (Go — SenPaiScanner fork)
+- Real Xray validation layer exists and works (internal/xraytest)
+- parser.go: parses vless/trojan/vmess share links, WithAddress() for IP swap
+- builder.go: DefaultCipherSuites, DefaultFingerprint="unsafe", defaultFragmentSettings()
+- runner.go: spins up real xcore.Instance, validates through real traffic
+- mobile/mobile.go: full gomobile bridge — StartScan(), StopScan(), GenerateConfigs()
+- mobile/validate.go: Android-safe xray validation (no stdout redirect, no temp files)
+- E2E test: 5/5 success on real Iranian ISP (Termux, no VPN)
+- Build: go build ./... passes with Go 1.26.1
+- AAR built via GitHub Actions — artifact: SenPaiScanner-1.0.0-mobile.aar (46MB)
+
+### Android Client (PattNG fork — QuietStorm-NG)
+- App name: QuietStorm-NG
+- Package name: com.quietstorm.ng (no conflict with v2rayNG)
+- GitHub Actions CI: working, builds 4 APK variants + fdroid
+- Keystore: alias=quietstorm, storepass/keypass=QuietStorm2026
+- CoreOutboundBuilder.kt: fingerprint="unsafe" hardcoded, cipherSuites + finalMask defaults
+- TESTED: VPN connects on Iranian ISP through Cloudflare CDN
+
+### AAR Integration
+- senpaiscanner.aar at: pattng/V2rayNG/app/libs/senpaiscanner.aar
+- build.gradle.kts: implementation(fileTree("libs", "*.aar", "*.jar"))
+- WARNING: AAR contains xray-core — conflicts with PattNG xray-core
+- Currently NOT used at runtime — only referenced for future ipsrc integration
+
+### CloudflareScanner.kt (com.v2ray.ang.senpai)
+- Path: V2rayNG/app/src/main/java/com/v2ray/ang/senpai/CloudflareScanner.kt
+- Uses CoreNativeManager.measureOutboundDelay from PattNG (NOT the AAR)
+- Reason: AAR xray-core conflicts with PattNG xray-core
+- Currently tests 20 hardcoded Cloudflare IP candidates — NOT a real scanner
+- applyBestIp(): writes best IP to profileItem + triggers UI reload via setupGroupTab
+
+### UI — MainBottomBar
+- "IP Scan" button (gold) added next to main FAB
+- Progress bar with blue animated dots
+- "IP Scan" label below button
+- isScanning / scanDone / scanTotal in MainUiState
+- MainAction.StartCFScan / CancelCFScan in MainContract
+
+### AppConfig Constants (production — DO NOT CHANGE without testing)
+- DEFAULT_FINGERPRINT = "unsafe"
+- DEFAULT_FINALMASK = {"tcp":[...tlshello...1-1...]}
+- DEFAULT_CIPHERSUITES = TLS_AES_256_GCM_SHA384:...
+
+### ServerActivity (Edit UI)
+- finalMask default: AppConfig.DEFAULT_FINALMASK
+- fingerPrint default: "unsafe"
+- cipherSuites default: AppConfig.DEFAULT_CIPHERSUITES
+
+---
+
+## PRODUCTION CONFIG DEFAULTS (do not change without testing)
+
+fingerprint: "unsafe"
+
+cipherSuites:
+TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256:TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256:TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256:TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256:TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256:TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA:TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA:TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256:TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
+
+finalMask:
+{"tcp":[{"type":"fragment","settings":{"packets":"tlshello","lengths":["5","94","1"],"delays":["0"],"maxSplit":"0"}},{"type":"fragment","settings":{"packets":"1-1","lengths":["109","1"],"delays":["1"],"maxSplit":"355"}}]}
+
+---
+
+## OPEN — NEXT STEPS (in order)
+
+1. NEXT: Real scanner — no hardcoded IPs
+   - Problem: CloudflareScanner.kt only tests 20 hardcoded IPs
+   - Solution A: Use Mobile.StartScan() from AAR — but must resolve xray-core conflict first
+     Option: exclude xray-core from AAR via gradle (excludeGroup)
+   - Solution B: Compile only ipsrc package as a separate small AAR (no xray dependency)
+     ipsrc generates real Cloudflare IP streams (MahsaNGV4Stream)
+     Then use CoreNativeManager.measureOutboundDelay for validation
+   - Solution B is cleaner and avoids the conflict entirely
+   - Key file: senpai-scanner/internal/ipsrc/ — generates IP ranges, no xray dep
+
+2. IP sync between main screen and Edit UI
+   - applyBestIp triggers setupGroupTab but cache invalidation needs testing
+   - May need explicit MmkvManager reload after IP write
+
+3. Full UI theme — black/gold (QuietStormNet brand)
+   - Background: #0A0A0A, Gold: #C9A84C, Smoke: #2A2A2A
+   - Brand assets available (logo images sent by user)
+
+4. App icon — QuietStorm-NG brand (black/gold)
+
+5. Scoring/ranking in scanner (post-MVP)
+
+---
+
+## IMPORTANT NOTES
+
+- E2E validation MUST run on real Iranian ISP — NOT from Dutch server
+- fingerprint MUST be "unsafe" — "chrome" breaks connection on Iranian ISPs
+- senpaiscanner.aar is in libs but has xray-core conflict — not used at runtime yet
+- Build server: /opt/quietstorm-vpn/ (NOT /root/quietstorm-vpn/)
+- Go 1.26.1 at /usr/local/go
+- PattNG git remote already configured with token (no username/password needed)
+- Git push command: cd /opt/quietstorm-vpn/pattng && git -c user.email="mo3iiibest77@gmail.com" -c user.name="Mo3iBest" add ... && git commit -m "..." && git push origin master
