@@ -1,4 +1,4 @@
-PROJECT_FOUNDATION.md
+# PROJECT_FOUNDATION.md
 # QuietStorm-VPN — Project Foundation
 
 > This file defines the permanent architecture, rules, and reasoning of the
