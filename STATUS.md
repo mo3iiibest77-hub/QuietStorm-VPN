@@ -297,5 +297,274 @@ finalMask:
 - senpaiscanner.aar is in libs but has xray-core conflict — not used at runtime yet
 - Build server: /opt/quietstorm-vpn/ (NOT /root/quietstorm-vpn/)
 - Go 1.26.1 at /usr/local/go
+  
 - PattNG git remote already configured with token (no username/password needed)
-- Git push command: cd /opt/quietstorm-vpn/pattng && git -c user.email="mo3iiibest77@gmail.com" -c user.name="Mo3iBest" add ... && git commit -m "..." && git push origin master
+- Git push command: cd /opt/quietstorm-vpn/pattng && git -c user.email="mo3iiibest77@gmail.com" -c user.name="Mo3iBest" ـ add ... && git commit -m "..." && git push origin master
+
+16) PattNG Real Client-Side Traffic Validation — Latest Update
+
+Current Android Scanner Architecture
+
+The current PattNG checkout does NOT use the SenPaiScanner AAR at runtime.
+
+The "V2rayNG/app/libs/" directory is currently empty on the build server.
+
+The Android client already has its own native Xray integration through:
+
+"CoreNativeManager.kt"
+"CoreServiceManager.kt"
+"libv2ray.CoreController"
+
+The current scanner path therefore uses PattNG's existing Xray core rather than introducing a second Go/Xray runtime.
+
+This is important because previous SenPaiScanner AAR attempts caused "libgojni.so" and Go runtime conflicts with PattNG's existing "libv2ray" runtime.
+
+Real Traffic Quality Test — Added
+
+A new Kotlin component was added:
+
+"V2rayNG/app/src/main/java/com/v2ray/ang/service/RealTrafficSpeedTest.kt"
+
+Its purpose is to distinguish simple Xray/HTTP reachability from actual application traffic through the candidate VPN configuration.
+
+The test creates a temporary SOCKS inbound inside a temporary Xray "CoreController", using the supplied production configuration.
+
+Traffic is then generated through the local SOCKS proxy using OkHttp.
+
+The current sequence is intentionally:
+
+UPLOAD → DOWNLOAD
+
+Upload is the primary quality signal because Cloudflare IPs that appear good for download can still perform poorly for upstream traffic on Iranian mobile networks.
+
+Upload Test
+
+Current upload endpoint:
+
+"https://speed.cloudflare.com/__up"
+
+Current test payload:
+
+"8 MiB"
+
+Current minimum upload threshold:
+
+"700 KiB/s"
+
+The test must successfully upload the complete payload through the candidate Xray tunnel before the candidate is accepted.
+
+The purpose is not to require an unusually high Iranian upload speed. The target is to reject candidates that technically connect but cannot sustain meaningful upstream traffic.
+
+The threshold is intentionally around the practical range observed for good Telegram uploads on Iranian mobile connectivity, rather than assuming that a Dutch server's bandwidth represents the end user's real network.
+
+Download Test
+
+Current download endpoint:
+
+"https://speed.cloudflare.com/__down?bytes=8388608"
+
+Current test payload:
+
+"8 MiB"
+
+Download is measured only after the upload test succeeds.
+
+This prevents a candidate from being ranked as good merely because it can download quickly while its upstream path is unusable.
+
+Important Validation Rule
+
+A candidate must not be considered production-quality merely because:
+
+- TCP connects
+- TLS succeeds
+- Cloudflare responds
+- latency is low
+- download speed is high
+
+The candidate must also demonstrate real upstream data transfer through the same effective production Xray configuration.
+
+The intended quality model is therefore:
+
+CONNECTIVITY → REAL UPLOAD → REAL DOWNLOAD → STABILITY
+
+Upload is currently the gating signal.
+
+Production Configuration Requirement
+
+The traffic test receives the generated Xray configuration from the existing PattNG configuration pipeline.
+
+The test must continue using the same effective production values already used by the client, including:
+
+"server"
+
+"port"
+
+"protocol"
+
+"transport"
+
+"TLS"
+
+"SNI"
+
+"ALPN"
+
+"fingerprint"
+
+"cipherSuites"
+
+"finalMask"
+
+"flow"
+
+"security"
+
+and all other transport-specific parameters present in the active profile.
+
+The scanner must not create a simplified TLS/WS configuration that differs materially from the configuration used by the real VPN connection.
+
+RealPingWorkerService Integration
+
+"RealPingWorkerService.kt" was extended so that a successful outbound delay test is followed by "RealTrafficSpeedTest.run(configResult.content)".
+
+If the delay test fails, the worker returns failure.
+
+If the real traffic test fails, the worker also returns failure.
+
+Successful traffic measurements are logged together with the measured delay, upload rate, and download rate.
+
+Current log format includes:
+
+"RealTrafficSpeedTest: upload=...KB/s download=...KB/s"
+
+and:
+
+"RealPing: <guid> delay=...ms upload=...KB/s download=...KB/s"
+
+Current Build State
+
+A local Android build was attempted on the build server using:
+
+"./gradlew assemblePlaystoreRelease --no-daemon"
+
+The build did NOT reach Android compilation.
+
+The current blocker is Gradle plugin resolution:
+
+"com.android.application:com.android.application.gradle.plugin:9.3.1"
+
+The configured repositories are:
+
+Google
+
+Maven Central
+
+Gradle Plugin Portal
+
+The failure is therefore a build-environment / dependency-resolution blocker, not evidence that the new Kotlin source itself fails compilation.
+
+No AGP downgrade should be performed blindly.
+
+Build Authority
+
+The Android release build is intended to be performed by GitHub Actions.
+
+The Dutch build server is used for source inspection, targeted diagnostics, Git operations, and development work.
+
+A successful local Gradle build is not required to establish the final release build if GitHub Actions is the authoritative build pipeline.
+
+However, the GitHub Actions build must be checked after the changes are committed and pushed.
+
+Current Git Working Tree
+
+The following PattNG files were modified during the current implementation:
+
+"V2rayNG/app/src/main/java/com/v2ray/ang/AppConfig.kt"
+
+"V2rayNG/app/src/main/java/com/v2ray/ang/service/RealPingWorkerService.kt"
+
+"V2rayNG/app/src/main/java/com/v2ray/ang/ui/server/ServerActivity.kt"
+
+New file:
+
+"V2rayNG/app/src/main/java/com/v2ray/ang/service/RealTrafficSpeedTest.kt"
+
+"git diff --check" currently passes.
+
+The working tree contains these changes and they have not yet been validated by a successful Android build.
+
+CONFIRMED
+
+The real traffic test code exists in the PattNG checkout.
+
+Upload is executed before download.
+
+The upload threshold is approximately "700 KiB/s".
+
+The traffic test runs through a temporary Xray "CoreController" and local SOCKS proxy.
+
+The existing PattNG Xray core is reused.
+
+"RealPingWorkerService" invokes the real traffic test after outbound delay validation.
+
+"git diff --check" passes.
+
+The local build currently stops during Android Gradle Plugin resolution for version "9.3.1".
+
+NOT YET CONFIRMED
+
+The new traffic test has not yet been confirmed on a real Android device.
+
+The "700 KiB/s" threshold has not yet been calibrated against a sufficiently large sample of real Iranian mobile-network connections.
+
+The test has not yet been demonstrated to reliably distinguish a known-good Cloudflare IP from a known-bad or download-only-good IP.
+
+The GitHub Actions build has not yet been run against the current changes.
+
+No final ranking formula has been implemented yet.
+
+Required Next Validation
+
+Do not change the architecture yet.
+
+First:
+
+1. Push the current source changes to the intended PattNG branch.
+
+2. Let GitHub Actions perform the Android build.
+
+3. Install the resulting APK on the real Android test device.
+
+4. Run the scanner on the actual Iranian mobile network.
+
+5. Record for each candidate:
+
+"IP"
+
+"delay"
+
+"upload"
+
+"download"
+
+"pass/fail"
+
+"failure reason"
+
+6. Compare at least one known-good IP against several candidates that previously showed good download but poor upload.
+
+7. Verify that the scanner rejects candidates with unusable upstream performance even when their download performance is high.
+
+Only after this real-device validation should the upload threshold, scoring, or ranking logic be changed.
+
+Critical Interpretation Rule
+
+Do not interpret high download speed as proof that a Cloudflare IP is clean.
+
+For this project, a candidate with excellent download but poor upload is a failed or low-quality candidate.
+
+The primary objective is not maximum benchmark throughput.
+
+The objective is reliable bidirectional application traffic through the real production VPN configuration on the user's actual network.
+
+ENDOFSTATUS
